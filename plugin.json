@@ -1,9 +1,9 @@
 {
   "id": "unity-mcp",
   "kind": "plugin",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "label": "UNITY MCP",
-  "description": "Zero-setup Coplay Unity MCP bridge. Install the Store plugin, open a Unity project — tools appear as unity__* on the shared MCP. No Package Manager or URL setup.",
+  "description": "Control Unity Editor from Ducky. Runs the Coplay MCP server locally and installs MCP for Unity into open Hub projects — no Package Manager or URL setup.",
   "min_app_version": "1.0.0",
   "default_enabled": true,
   "secret_keys": [],
@@ -12,7 +12,8 @@
       "category": "unity",
       "intent_pattern": "\\b(unity|gameobject|prefab|unity\\s*mcp)\\b",
       "plan_tools": [
-        "unity_mcp_status"
+        "unity_status",
+        "unity_list_tools"
       ]
     }
   },

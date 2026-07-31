@@ -49,7 +49,7 @@ _PROC: subprocess.Popen[Any] | None = None
 
 def _appdata_root() -> Path:
     try:
-        from backend.skill import appdata_dir
+        from backend.skills.store import appdata_dir
 
         return Path(appdata_dir()) / "unity_mcp"
     except Exception:

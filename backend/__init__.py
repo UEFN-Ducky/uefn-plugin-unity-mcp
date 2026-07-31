@@ -7,7 +7,7 @@ import logging
 import threading
 from typing import Any
 
-from .constants import DEFAULT_URL, PLUGIN_ID
+from .constants import DEFAULT_URL, PLUGIN_ID, UNITY_INTENT
 
 log = logging.getLogger("uefn.plugin.unity-mcp")
 
@@ -16,45 +16,63 @@ _STOP = threading.Event()
 
 
 def register(api: Any) -> None:
-    """Wire nested MCP, start managed server + project watcher, register status tool."""
-    from . import bridge
+    """Start the managed server + project watcher and register the Unity tools."""
+    from . import legacy
 
-    try:
-        result = bridge.upsert_nested_server(DEFAULT_URL)
-        api.log(f"UNITY MCP nested bridge {result.get('action')} -> {DEFAULT_URL}")
-    except Exception as exc:
-        api.log(f"UNITY MCP nested bridge failed: {exc}")
-        log.warning("unity nested upsert failed: %s", exc)
+    cleanup = legacy.remove_legacy_nested_server()
+    if cleanup.get("removed"):
+        api.log("UNITY MCP removed the old nested mcp.json row — tools are plugin-owned now")
 
     if api.is_enabled():
         _start_runtime_async(api.log)
 
-    @api.tool(name="unity_mcp_status", intent=r"\b(unity|unity\s*mcp)\b")
-    def unity_mcp_status() -> str:
-        """Report UNITY MCP readiness: server, open projects, nested bridge, probe."""
+    @api.tool(name="unity_status", intent=UNITY_INTENT, listener=False)
+    def unity_status() -> str:
+        """Report UNITY MCP readiness: server, open Unity projects, live tool count."""
         return json.dumps(_build_status(), indent=2)
 
-    @api.tool(name="unity_mcp_redeploy", intent=r"\b(unity|unity\s*mcp)\b")
-    def unity_mcp_redeploy() -> str:
-        """Re-run zero-setup: ensure server + inject package/bootstrap into open projects."""
+    @api.tool(name="unity_list_tools", intent=UNITY_INTENT, listener=False)
+    def unity_list_tools() -> str:
+        """List the Unity Editor tools the connected project exposes, with input schemas."""
+        from . import client
+
+        try:
+            tools = client.list_tools()
+        except Exception as exc:
+            return json.dumps(
+                {"ok": False, "error": str(exc), "status": _build_status()},
+                indent=2,
+            )
+        return json.dumps({"ok": True, "count": len(tools), "tools": tools}, indent=2)
+
+    @api.tool(name="unity_call", intent=UNITY_INTENT, listener=False)
+    def unity_call(tool: str, arguments: dict[str, Any] | None = None) -> str:
+        """Call one Unity Editor tool by name (see unity_list_tools) with its arguments."""
+        from . import client
+
+        name = (tool or "").strip()
+        if not name:
+            return json.dumps({"ok": False, "error": "tool name is required"}, indent=2)
+        try:
+            args = _coerce_arguments(arguments)
+        except ValueError as exc:
+            return json.dumps({"ok": False, "error": str(exc)}, indent=2)
+        try:
+            return json.dumps(client.call_tool(name, args), indent=2, default=str)
+        except Exception as exc:
+            return json.dumps(
+                {"ok": False, "tool": name, "error": str(exc), "status": _build_status()},
+                indent=2,
+            )
+
+    @api.tool(name="unity_redeploy", intent=UNITY_INTENT, listener=False)
+    def unity_redeploy() -> str:
+        """Re-run zero-setup: ensure the server and re-inject MCP for Unity into open projects."""
         from . import projects, runtime
 
         uv = runtime.ensure_uv()
         server = runtime.ensure_server()
         sync = projects.sync_open_projects()
-        try:
-            bridge.upsert_nested_server(DEFAULT_URL)
-        except Exception as exc:
-            return json.dumps(
-                {
-                    "ok": False,
-                    "error": f"nested upsert failed: {exc}",
-                    "uv": uv,
-                    "server": server,
-                    "projects": sync,
-                },
-                indent=2,
-            )
         return json.dumps(
             {
                 "ok": bool(uv.get("ok") and server.get("ok")),
@@ -70,14 +88,25 @@ def register(api: Any) -> None:
 
 
 def unload() -> None:
-    """Stop watcher and plugin-owned server; disable nested MCP entry."""
+    """Stop the watcher and the plugin-owned server."""
     _stop_runtime()
-    try:
-        from . import bridge
 
-        bridge.disable_nested_server()
-    except Exception as exc:
-        log.warning("unity nested disable failed: %s", exc)
+
+def _coerce_arguments(arguments: Any) -> dict[str, Any]:
+    """Accept a mapping or a JSON object string — models send both."""
+    if arguments is None or arguments == "":
+        return {}
+    if isinstance(arguments, dict):
+        return dict(arguments)
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"arguments is not valid JSON: {exc}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError("arguments must be a JSON object")
+        return parsed
+    raise ValueError("arguments must be an object")
 
 
 def _start_runtime_async(log_fn: Any) -> None:
@@ -154,13 +183,30 @@ def _stop_runtime() -> None:
         thread.join(timeout=2.0)
 
 
+def _tools_status(reachable: bool) -> dict[str, Any]:
+    """Live tool list — only probed once the HTTP endpoint answers."""
+    if not reachable:
+        return {"available": False, "reason": "server unreachable"}
+    from . import client
+
+    try:
+        tools = client.list_tools()
+    except Exception as exc:
+        return {"available": False, "error": str(exc)}
+    return {
+        "available": True,
+        "count": len(tools),
+        "names": [str(t.get("name") or "") for t in tools],
+    }
+
+
 def _build_status() -> dict[str, Any]:
-    from . import bridge, projects, runtime
+    from . import projects, runtime
 
     rt = runtime.runtime_status()
     proj = projects.projects_status()
-    nested = bridge.nested_status()
     probe_ok = bool((rt.get("probe") or {}).get("reachable"))
+    tools = _tools_status(probe_ok)
     has_open = bool(proj.get("open_projects"))
     configured = bool(proj.get("configured"))
 
@@ -176,19 +222,17 @@ def _build_status() -> dict[str, Any]:
         overall = "importing"
     elif probe_ok and configured:
         overall = "ready"
-    elif probe_ok:
-        overall = "connecting"
     else:
         overall = "connecting"
 
     hint = {
-        "downloading": "Downloading managed uv for Coplay MCP server…",
-        "starting": "Starting local Unity MCP HTTP server…",
+        "downloading": "Downloading managed uv for the Coplay MCP server…",
+        "starting": "Starting the local Unity MCP HTTP server…",
         "waiting_for_unity": "Open a Unity project from Unity Hub — package install is automatic.",
         "importing": "Injecting MCP for Unity into open project(s)…",
         "connecting": "Waiting for Unity Editor to connect to the local MCP server…",
-        "ready": "Ready. Use nested tools prefixed unity__.",
-        "error": "See error fields; call unity_mcp_redeploy after fixing the issue.",
+        "ready": "Ready. Call unity_list_tools, then unity_call.",
+        "error": "See error fields; call unity_redeploy after fixing the issue.",
     }.get(overall, "")
 
     return {
@@ -199,5 +243,5 @@ def _build_status() -> dict[str, Any]:
         "url": DEFAULT_URL,
         "runtime": rt,
         "projects": proj,
-        "nested": nested,
+        "tools": tools,
     }

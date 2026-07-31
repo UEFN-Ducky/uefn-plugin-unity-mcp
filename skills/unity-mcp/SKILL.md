@@ -1,14 +1,15 @@
 ---
 name: unity-mcp
 description: >-
-  Control Unity Editor through the UNITY MCP Store plugin (Coplay). Nested
-  tools appear as unity__* on uefn-ducky. Zero-setup: install plugin, open a
-  Unity Hub project — no Package Manager or URL steps. Use when the user
-  mentions Unity, GameObjects, prefabs, or Unity MCP.
+  Control Unity Editor through the UNITY MCP Store plugin (Coplay). Call
+  unity_list_tools to see what the open Unity project exposes, then unity_call
+  to run one. Zero-setup: install plugin, open a Unity Hub project — no Package
+  Manager or URL steps. Use when the user mentions Unity, GameObjects, prefabs,
+  or Unity MCP.
 license: All Rights Reserved
 metadata:
   label: UNITY MCP
-  version: 2
+  version: 3
   author: UEFN-Ducky
   copyright: Copyright 2026 UEFN-Ducky
   allow_redistribute: false
@@ -18,15 +19,16 @@ metadata:
 
 # UNITY MCP — Coplay Unity Editor bridge
 
-You control **Unity Editor** through the **UNITY MCP** Store plugin. It wires
-Coplay’s [MCP for Unity](https://github.com/CoplayDev/unity-mcp) as a nested
-HTTP MCP server. Tools appear as `unity__*` on the shared `uefn-ducky` MCP.
+You control **Unity Editor** through the **UNITY MCP** Store plugin. The plugin
+runs Coplay’s [MCP for Unity](https://github.com/CoplayDev/unity-mcp) server
+locally and forwards calls for you — Unity tools are reached through
+`unity_list_tools` + `unity_call`, not as separate `unity__*` entries.
 
 **Unity work does NOT need the UEFN / Fortnite listener.** If UNITY MCP is
 ready, proceed. Do not wait for UEFN.
 
-**Do not mix stacks:** UEFN/Verse/island tools are for Fortnite. Use `unity__*`
-only for Unity projects.
+**Do not mix stacks:** UEFN/Verse/island tools are for Fortnite. Use the
+`unity_*` tools only for Unity projects.
 
 ## Zero-setup (user)
 
@@ -39,9 +41,17 @@ That’s it. The plugin:
 - injects the MCP for Unity package into each **open** Hub project
 - configures auto-start so the Editor connects without Window → MCP for Unity
 
+## Calling Unity
+
+1. `unity_list_tools` — returns the live tool names, descriptions, and input
+   schemas from the connected project. Never guess a tool name; the set depends
+   on the installed Coplay version.
+2. `unity_call(tool="<name>", arguments={...})` — arguments must match that
+   tool’s input schema. A JSON object string is accepted too.
+
 ## Status tool
 
-Call `unity_mcp_status` when connectivity is unclear. `state` values:
+Call `unity_status` when connectivity is unclear. `state` values:
 
 | state | Meaning |
 |-------|---------|
@@ -50,20 +60,14 @@ Call `unity_mcp_status` when connectivity is unclear. `state` values:
 | `waiting_for_unity` | No open Hub project yet — tell user to open Unity |
 | `importing` | Injecting package / bootstrap into open project(s) |
 | `connecting` | Server up; waiting for Editor bridge |
-| `ready` | Use `unity__*` tools |
-| `error` | See `error` fields; `unity_mcp_redeploy` after fix |
-
-## Nested Unity tools
-
-After ready, Coplay tools are proxied as `unity__<tool_name>`. Discover live
-names from the agent tool list. Prefer those for GameObjects, scenes, assets,
-scripts, and tests inside Unity.
+| `ready` | Use `unity_list_tools` then `unity_call` |
+| `error` | See `error` fields; `unity_redeploy` after fix |
 
 ## Hard rules
 
-- Never invent Unity scene state — query with `unity__*` first.
+- Never invent Unity scene state — query it with `unity_call` first.
 - Never use UEFN `spawn_actor` / Verse tools for Unity work.
 - If status is `waiting_for_unity`, ask the user to open a Unity Hub project —
   do not send Package Manager git-URL instructions.
-- If `unity_mcp_status` shows unreachable / error, call `unity_mcp_redeploy`
-  or fix the reported error — do not retry UEFN tools as a substitute.
+- If `unity_status` shows unreachable / error, call `unity_redeploy` or fix the
+  reported error — do not retry UEFN tools as a substitute.

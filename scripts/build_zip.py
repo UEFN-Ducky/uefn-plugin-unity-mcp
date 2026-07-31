@@ -43,6 +43,8 @@ def build_zip(*, out: Path | None = None) -> Path:
                 continue
             if path.suffix.lower() in SKIP_SUFFIX or path.name.startswith("."):
                 continue
+            if path.name.startswith("test_"):
+                continue
             if path.name in SKIP_NAMES:
                 continue
             zf.write(path, arcname="/".join(rel_parts))

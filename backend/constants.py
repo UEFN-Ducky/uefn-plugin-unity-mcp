@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 PLUGIN_ID = "unity-mcp"
+# Nested mcp.json row created by plugin versions <= 1.1; cleaned up on load.
 NESTED_SERVER_ID = "unity"
 DEFAULT_URL = "http://127.0.0.1:8080/mcp"
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 HTTP_HOST = "127.0.0.1"
 HTTP_PORT = 8080
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 # Pin Coplay Unity package + Python server to the same major line.
 UNITY_PACKAGE_ID = "com.coplaydev.unity-mcp"
@@ -53,18 +55,15 @@ UV_ARTIFACTS: dict[str, dict[str, str]] = {
 BOOTSTRAP_SCRIPT_NAME = "UefnDuckyUnityMcpBootstrap.cs"
 BOOTSTRAP_MARKER = "UefnDuckyUnityMcpBootstrap.applied"
 
-UNITY_INTENTS = [
-    r"\bunity\b",
-    r"\bgameobject\b",
-    r"\bprefab\b",
-    r"\bunity\s*mcp\b",
-]
+UNITY_INTENT = r"\b(unity|gameobject|prefab|unity\s*mcp)\b"
 
 DESCRIPTION = (
-    "Coplay MCP for Unity (HTTP). Store plugin auto-wires the nested bridge, "
-    "runs the local server, and installs MCP for Unity into open Hub projects."
+    "Control Unity Editor from Ducky. Runs the Coplay MCP server locally and "
+    "installs MCP for Unity into open Hub projects — no setup."
 )
 
 WATCH_INTERVAL_S = 5.0
 PROBE_TIMEOUT_S = 2.5
 DOWNLOAD_TIMEOUT_S = 300
+CONNECT_TIMEOUT_S = 12.0
+CALL_TIMEOUT_S = 120.0
