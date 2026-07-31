@@ -32,7 +32,6 @@ def _load_dotenv() -> None:
     candidates = [
         ROOT / ".env",
         ROOT.parents[1] / ".env",
-        ROOT.parents[1].parent / "DuckyOS" / ".env",
         Path.home() / ".duckyos" / ".env",
     ]
     for path in candidates:
@@ -46,6 +45,22 @@ def _load_dotenv() -> None:
             key, val = key.strip(), val.strip().strip('"').strip("'")
             if key and key not in os.environ:
                 os.environ[key] = val
+
+    # Prefer Cursor MCP Bearer for uefnducky.org when env keys are unset.
+    if not (os.environ.get("DUCKYOS_API_KEY") or "").strip():
+        mcp_json = Path.home() / ".cursor" / "mcp.json"
+        if mcp_json.is_file():
+            try:
+                data = json.loads(mcp_json.read_text(encoding="utf-8"))
+                servers = data.get("mcpServers") or {}
+                srv = servers.get("uefn-duckyos-site") or {}
+                headers = srv.get("headers") or {}
+                auth = str(headers.get("Authorization") or headers.get("authorization") or "")
+                if auth.lower().startswith("bearer "):
+                    os.environ["DUCKYOS_API_KEY"] = auth.split(None, 1)[1].strip()
+                    os.environ.setdefault("DUCKYOS_BASE_URL", "https://uefnducky.org")
+            except Exception:
+                pass
 
 
 def mcp_call(base_url: str, api_key: str, name: str, arguments: dict) -> dict:
@@ -134,14 +149,18 @@ def upload_zip_file(base_url: str, api_key: str, zip_path: Path) -> dict:
 
 def publish(zip_path: Path, *, category: str, changelog: str) -> None:
     _load_dotenv()
-    base = (
-        os.environ.get("DUCKYOS_BASE_URL")
-        or os.environ.get("DUCKYOS_MARKETPLACE_URL")
-        or "https://uefnducky.org"
-    )
-    key = os.environ.get("DUCKYOS_API_KEY") or os.environ.get("DUCKYOS_MARKETPLACE_API_KEY") or ""
+    # Always UEFN site Store — never apex duckyos.org marketplace keys.
+    base = (os.environ.get("DUCKYOS_BASE_URL") or "https://uefnducky.org").rstrip("/")
+    if "duckyos.org" in base and "uefnducky.org" not in base:
+        raise SystemExit(
+            f"Refusing base URL {base!r} — publish UNITY MCP to https://uefnducky.org only"
+        )
+    key = (os.environ.get("DUCKYOS_API_KEY") or "").strip()
     if not key:
-        raise SystemExit("Set DUCKYOS_API_KEY (staff key with mcp_remote scopes) to publish")
+        raise SystemExit(
+            "Set DUCKYOS_API_KEY (uefnducky.org staff key) or configure "
+            "~/.cursor/mcp.json uefn-duckyos-site Bearer"
+        )
 
     manifest = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
     label = str(manifest.get("label") or "UNITY MCP")
