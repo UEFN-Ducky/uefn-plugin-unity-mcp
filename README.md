@@ -52,3 +52,7 @@ Requires `DUCKYOS_API_KEY`. Then **Settings → Store → Install / Update** in 
 ```bash
 py -m pytest backend -q
 ```
+
+## License
+
+MIT. Copyright (c) 2026 Mindful Path Company, LLC. See [LICENSE](LICENSE).

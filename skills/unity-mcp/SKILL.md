@@ -6,13 +6,13 @@ description: >-
   to run one. Zero-setup: install plugin, open a Unity Hub project — no Package
   Manager or URL steps. Use when the user mentions Unity, GameObjects, prefabs,
   or Unity MCP.
-license: All Rights Reserved
+license: MIT
 metadata:
   label: UNITY MCP
   version: 3
   author: UEFN-Ducky
-  copyright: Copyright 2026 UEFN-Ducky
-  allow_redistribute: false
+  copyright: Copyright 2026 Mindful Path Company, LLC
+  allow_redistribute: true
   managed_by: uefn-ducky
   source_plugin_id: unity-mcp
 ---
