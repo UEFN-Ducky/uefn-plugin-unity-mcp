@@ -49,6 +49,21 @@ _PROC: subprocess.Popen[Any] | None = None
 
 def _appdata_root() -> Path:
     try:
+        from backend.uefn_plugins.store import appdata_uefn_plugins_dir
+
+        return appdata_uefn_plugins_dir() / "unity-mcp" / "runtime"
+    except Exception:
+        try:
+            from backend.skills.store import appdata_dir
+
+            return Path(appdata_dir()) / "uefn_plugins" / "unity-mcp" / "runtime"
+        except Exception:
+            local = os.environ.get("LOCALAPPDATA") or os.environ.get("HOME") or "."
+            return Path(local) / "UEFN-Ducky" / "uefn_plugins" / "unity-mcp" / "runtime"
+
+
+def _legacy_sibling() -> Path:
+    try:
         from backend.skills.store import appdata_dir
 
         return Path(appdata_dir()) / "unity_mcp"
@@ -59,6 +74,17 @@ def _appdata_root() -> Path:
 
 def runtime_root() -> Path:
     root = _appdata_root()
+    old = _legacy_sibling()
+    if old.is_dir() and old.resolve() != root.resolve() and not root.exists():
+        root.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            old.rename(root)
+        except OSError:
+            try:
+                shutil.copytree(old, root, dirs_exist_ok=True)
+                shutil.rmtree(old, ignore_errors=True)
+            except OSError:
+                pass
     root.mkdir(parents=True, exist_ok=True)
     return root
 

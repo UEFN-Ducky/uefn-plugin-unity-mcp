@@ -147,6 +147,28 @@ def test_stop_server_only_owned() -> None:
     assert result["stopped"] is False
 
 
+def test_runtime_root_lives_under_plugin(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(
+        runtime,
+        "_appdata_root",
+        lambda: tmp_path / "UEFN-Ducky" / "uefn_plugins" / "unity-mcp" / "runtime",
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_legacy_sibling",
+        lambda: tmp_path / "UEFN-Ducky" / "unity_mcp",
+    )
+    old = tmp_path / "UEFN-Ducky" / "unity_mcp" / "bin"
+    old.mkdir(parents=True)
+    (old / "uv.exe").write_bytes(b"uv")
+    root = runtime.runtime_root()
+    assert "uefn_plugins" in root.parts
+    assert root.name == "runtime"
+    assert (root / "bin" / "uv.exe").is_file()
+    assert not (tmp_path / "UEFN-Ducky" / "unity_mcp").exists()
+
+
 def test_runtime_status_shape() -> None:
     with patch.object(
         runtime,
