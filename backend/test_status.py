@@ -5,7 +5,16 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
+import pytest
+
 import backend as plugin
+
+
+@pytest.fixture(autouse=True)
+def _reset_wake() -> None:
+    plugin._WOKEN = False
+    yield
+    plugin._WOKEN = False
 
 
 class FakeApi:
@@ -115,7 +124,33 @@ def test_register_registers_plugin_owned_tools() -> None:
     assert api.connection_kwargs.get("program") == "unity"
 
 
+def test_register_does_not_start_runtime() -> None:
+    with patch.object(plugin, "_start_runtime_async") as start:
+        _register(FakeApi(enabled=True))
+    assert not start.called
+
+
+def test_list_tools_wakes_runtime() -> None:
+    api = _register(FakeApi())
+    with (
+        patch.object(plugin, "_start_runtime_async") as start,
+        patch("backend.client.list_tools", return_value=[]),
+    ):
+        json.loads(api.tools["unity_list_tools"]())
+    assert plugin._WOKEN is True
+    assert start.called
+
+
+def test_connection_row_idle_until_woken() -> None:
+    plugin._WOKEN = False
+    row = plugin._connection_row()
+    assert row["online"] is False
+    assert "not used" in row["detail"]
+
+
 def test_connection_row_online(monkeypatch) -> None:
+    plugin._WOKEN = True
+
     class _Sock:
         def settimeout(self, _t: float) -> None:
             return None
@@ -133,6 +168,7 @@ def test_connection_row_online(monkeypatch) -> None:
 
 
 def test_connection_row_offline(monkeypatch) -> None:
+    plugin._WOKEN = True
     class _Sock:
         def settimeout(self, _t: float) -> None:
             return None

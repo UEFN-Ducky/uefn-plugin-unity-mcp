@@ -13,18 +13,16 @@ log = logging.getLogger("uefn.plugin.unity-mcp")
 
 _RUNTIME_THREAD: threading.Thread | None = None
 _STOP = threading.Event()
+_WOKEN = False
 
 
 def register(api: Any) -> None:
-    """Start the managed server + project watcher and register the Unity tools."""
+    """Register Unity tools. Server + watcher start on first real tool use."""
     from . import legacy
 
     cleanup = legacy.remove_legacy_nested_server()
     if cleanup.get("removed"):
         api.log("UNITY MCP removed the old nested mcp.json row — tools are plugin-owned now")
-
-    if api.is_enabled():
-        _start_runtime_async(api.log)
 
     connect = getattr(api, "connection", None)
     if callable(connect):
@@ -40,6 +38,7 @@ def register(api: Any) -> None:
         """List the Unity Editor tools the connected project exposes, with input schemas."""
         from . import client
 
+        _wake(api.log)
         try:
             tools = client.list_tools()
         except Exception as exc:
@@ -57,6 +56,7 @@ def register(api: Any) -> None:
         name = (tool or "").strip()
         if not name:
             return json.dumps({"ok": False, "error": "tool name is required"}, indent=2)
+        _wake(api.log)
         try:
             args = _coerce_arguments(arguments)
         except ValueError as exc:
@@ -74,6 +74,7 @@ def register(api: Any) -> None:
         """Re-run zero-setup: ensure the server and re-inject MCP for Unity into open projects."""
         from . import projects, runtime
 
+        _wake(api.log)
         uv = runtime.ensure_uv()
         server = runtime.ensure_server()
         sync = projects.sync_open_projects()
@@ -111,6 +112,15 @@ def _coerce_arguments(arguments: Any) -> dict[str, Any]:
             raise ValueError("arguments must be a JSON object")
         return parsed
     raise ValueError("arguments must be an object")
+
+
+def _wake(log_fn: Any = None) -> None:
+    """Start the managed server only after a real Unity tool call."""
+    global _WOKEN
+    _WOKEN = True
+    thread = _RUNTIME_THREAD
+    if thread is None or not thread.is_alive():
+        _start_runtime_async(log_fn or (lambda _msg: None))
 
 
 def _start_runtime_async(log_fn: Any) -> None:
@@ -167,7 +177,8 @@ def _start_runtime_async(log_fn: Any) -> None:
 
 
 def _stop_runtime() -> None:
-    global _RUNTIME_THREAD
+    global _RUNTIME_THREAD, _WOKEN
+    _WOKEN = False
     _STOP.set()
     try:
         from . import projects
@@ -188,7 +199,10 @@ def _stop_runtime() -> None:
 
 
 def _connection_row() -> dict[str, Any]:
-    """Cheap TCP probe for the Connections menu — no Unity tool list."""
+    """Cheap TCP probe — skipped until a Unity tool actually runs."""
+    if not _WOKEN:
+        return {"online": False, "detail": "Idle · not used this session"}
+
     import socket
 
     from .constants import DEFAULT_URL, HTTP_HOST, HTTP_PORT
