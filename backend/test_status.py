@@ -14,6 +14,8 @@ class FakeApi:
     def __init__(self, enabled: bool = False) -> None:
         self.enabled = enabled
         self.tools: dict[str, object] = {}
+        self.connection_fn = None
+        self.connection_kwargs: dict[str, object] = {}
 
     def is_enabled(self) -> bool:
         return self.enabled
@@ -27,6 +29,10 @@ class FakeApi:
             return fn
 
         return deco
+
+    def connection(self, fn: object, **kwargs: object) -> None:
+        self.connection_fn = fn
+        self.connection_kwargs = kwargs
 
 
 def _register(api: FakeApi) -> FakeApi:
@@ -104,6 +110,43 @@ def test_register_registers_plugin_owned_tools() -> None:
         "unity_call",
         "unity_redeploy",
     }
+    assert api.connection_fn is plugin._connection_row
+    assert api.connection_kwargs.get("label") == "Unity MCP"
+    assert api.connection_kwargs.get("program") == "unity"
+
+
+def test_connection_row_online(monkeypatch) -> None:
+    class _Sock:
+        def settimeout(self, _t: float) -> None:
+            return None
+
+        def connect(self, _addr: object) -> None:
+            return None
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("socket.socket", lambda *a, **k: _Sock())
+    row = plugin._connection_row()
+    assert row["online"] is True
+    assert "127.0.0.1:8080" in row["detail"]
+
+
+def test_connection_row_offline(monkeypatch) -> None:
+    class _Sock:
+        def settimeout(self, _t: float) -> None:
+            return None
+
+        def connect(self, _addr: object) -> None:
+            raise OSError("refused")
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr("socket.socket", lambda *a, **k: _Sock())
+    row = plugin._connection_row()
+    assert row["online"] is False
+    assert "open Unity" in row["detail"]
 
 
 def test_register_drops_legacy_nested_row() -> None:

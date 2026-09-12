@@ -26,6 +26,10 @@ def register(api: Any) -> None:
     if api.is_enabled():
         _start_runtime_async(api.log)
 
+    connect = getattr(api, "connection", None)
+    if callable(connect):
+        connect(_connection_row, label="Unity MCP", program="unity")
+
     @api.tool(name="unity_status", intent=UNITY_INTENT, listener=False)
     def unity_status() -> str:
         """Report UNITY MCP readiness: server, open Unity projects, live tool count."""
@@ -181,6 +185,26 @@ def _stop_runtime() -> None:
     _RUNTIME_THREAD = None
     if thread and thread.is_alive() and thread is not threading.current_thread():
         thread.join(timeout=2.0)
+
+
+def _connection_row() -> dict[str, Any]:
+    """Cheap TCP probe for the Connections menu — no Unity tool list."""
+    import socket
+
+    from .constants import DEFAULT_URL, HTTP_HOST, HTTP_PORT
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.3)
+    try:
+        sock.connect((HTTP_HOST, HTTP_PORT))
+        return {"online": True, "detail": f"Connected · {DEFAULT_URL}"}
+    except OSError:
+        return {"online": False, "detail": f"Offline · open Unity ({DEFAULT_URL})"}
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
 
 
 def _tools_status(reachable: bool) -> dict[str, Any]:
