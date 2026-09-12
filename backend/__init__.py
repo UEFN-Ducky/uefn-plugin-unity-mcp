@@ -13,16 +13,18 @@ log = logging.getLogger("uefn.plugin.unity-mcp")
 
 _RUNTIME_THREAD: threading.Thread | None = None
 _STOP = threading.Event()
-_WOKEN = False
 
 
 def register(api: Any) -> None:
-    """Register Unity tools. Server + watcher start on first real tool use."""
+    """Start the managed server + project watcher and register the Unity tools."""
     from . import legacy
 
     cleanup = legacy.remove_legacy_nested_server()
     if cleanup.get("removed"):
         api.log("UNITY MCP removed the old nested mcp.json row — tools are plugin-owned now")
+
+    if api.is_enabled():
+        _start_runtime_async(api.log)
 
     connect = getattr(api, "connection", None)
     if callable(connect):
@@ -38,7 +40,6 @@ def register(api: Any) -> None:
         """List the Unity Editor tools the connected project exposes, with input schemas."""
         from . import client
 
-        _wake(api.log)
         try:
             tools = client.list_tools()
         except Exception as exc:
@@ -56,7 +57,6 @@ def register(api: Any) -> None:
         name = (tool or "").strip()
         if not name:
             return json.dumps({"ok": False, "error": "tool name is required"}, indent=2)
-        _wake(api.log)
         try:
             args = _coerce_arguments(arguments)
         except ValueError as exc:
@@ -74,7 +74,6 @@ def register(api: Any) -> None:
         """Re-run zero-setup: ensure the server and re-inject MCP for Unity into open projects."""
         from . import projects, runtime
 
-        _wake(api.log)
         uv = runtime.ensure_uv()
         server = runtime.ensure_server()
         sync = projects.sync_open_projects()
@@ -114,13 +113,24 @@ def _coerce_arguments(arguments: Any) -> dict[str, Any]:
     raise ValueError("arguments must be an object")
 
 
-def _wake(log_fn: Any = None) -> None:
-    """Start the managed server only after a real Unity tool call."""
-    global _WOKEN
-    _WOKEN = True
-    thread = _RUNTIME_THREAD
-    if thread is None or not thread.is_alive():
-        _start_runtime_async(log_fn or (lambda _msg: None))
+def _port_open() -> bool:
+    """Cheap TCP check — no HTTP, no tool list."""
+    import socket
+
+    from .constants import HTTP_HOST, HTTP_PORT
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(0.3)
+    try:
+        sock.connect((HTTP_HOST, HTTP_PORT))
+        return True
+    except OSError:
+        return False
+    finally:
+        try:
+            sock.close()
+        except OSError:
+            pass
 
 
 def _start_runtime_async(log_fn: Any) -> None:
@@ -131,7 +141,7 @@ def _start_runtime_async(log_fn: Any) -> None:
         from . import projects, runtime
 
         try:
-            log_fn("UNITY MCP zero-setup starting")
+            log_fn("UNITY MCP auto-connect")
         except Exception:
             pass
         try:
@@ -143,22 +153,22 @@ def _start_runtime_async(log_fn: Any) -> None:
                 except Exception:
                     pass
                 return
-            server = runtime.ensure_server()
-            try:
-                log_fn(
-                    f"UNITY MCP server: ok={server.get('ok')} "
-                    f"reused={server.get('reused')} started={server.get('started')}"
-                )
-            except Exception:
-                pass
             projects.start_watcher(log_fn)
-            # Keep nudging the server until reachable or stop requested.
             while not _STOP.is_set():
-                try:
-                    runtime.ensure_server()
-                except Exception as exc:
-                    log.warning("server ensure failed: %s", exc)
-                if _STOP.wait(8.0):
+                if not _port_open():
+                    try:
+                        server = runtime.ensure_server()
+                        try:
+                            log_fn(
+                                f"UNITY MCP server: ok={server.get('ok')} "
+                                f"reused={server.get('reused')} started={server.get('started')}"
+                            )
+                        except Exception:
+                            pass
+                    except Exception as exc:
+                        log.warning("server ensure failed: %s", exc)
+                wait = 15.0 if _port_open() else 30.0
+                if _STOP.wait(wait):
                     break
         except Exception as exc:
             log.warning("unity runtime failed: %s", exc)
@@ -177,8 +187,7 @@ def _start_runtime_async(log_fn: Any) -> None:
 
 
 def _stop_runtime() -> None:
-    global _RUNTIME_THREAD, _WOKEN
-    _WOKEN = False
+    global _RUNTIME_THREAD
     _STOP.set()
     try:
         from . import projects
@@ -199,10 +208,7 @@ def _stop_runtime() -> None:
 
 
 def _connection_row() -> dict[str, Any]:
-    """Cheap TCP probe — skipped until a Unity tool actually runs."""
-    if not _WOKEN:
-        return {"online": False, "detail": "Idle · not used this session"}
-
+    """Cheap TCP probe for the Connections menu — no Unity tool list."""
     import socket
 
     from .constants import DEFAULT_URL, HTTP_HOST, HTTP_PORT
