@@ -9,7 +9,7 @@ description: >-
 license: MIT
 metadata:
   label: UNITY MCP
-  version: 3
+  version: 4
   author: UEFN-Ducky
   copyright: Copyright 2026 Mindful Path Company, LLC
   allow_redistribute: true
@@ -57,7 +57,7 @@ Call `unity_status` when connectivity is unclear. `state` values:
 |-------|---------|
 | `downloading` | Fetching managed `uv` |
 | `starting` | Starting local HTTP server |
-| `waiting_for_unity` | No open Hub project yet — tell user to open Unity |
+| `waiting_for_unity` | No open Hub project yet — call `ducky_ask_user` only if they must open Unity |
 | `importing` | Injecting package / bootstrap into open project(s) |
 | `connecting` | Server up; waiting for Editor bridge |
 | `ready` | Use `unity_list_tools` then `unity_call` |
@@ -67,7 +67,11 @@ Call `unity_status` when connectivity is unclear. `state` values:
 
 - Never invent Unity scene state — query it with `unity_call` first.
 - Never use UEFN `spawn_actor` / Verse tools for Unity work.
-- If status is `waiting_for_unity`, ask the user to open a Unity Hub project —
-  do not send Package Manager git-URL instructions.
+- If status is `waiting_for_unity`, call `ducky_ask_user` only if they must open
+  a Hub project — do not send Package Manager git-URL instructions.
 - If `unity_status` shows unreachable / error, call `unity_redeploy` or fix the
   reported error — do not retry UEFN tools as a substitute.
+
+## Verify
+
+`unity_status` then `unity_call` a read. Do not invent Hub/Package Manager homework.
