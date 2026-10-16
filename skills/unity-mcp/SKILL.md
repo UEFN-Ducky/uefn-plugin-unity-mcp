@@ -1,11 +1,6 @@
 ---
 name: unity-mcp
-description: >-
-  Control Unity Editor through the UNITY MCP Store plugin (Coplay). Call
-  unity_list_tools to see what the open Unity project exposes, then unity_call
-  to run one. Zero-setup: install plugin, open a Unity Hub project — no Package
-  Manager or URL steps. Use when the user mentions Unity, GameObjects, prefabs,
-  or Unity MCP.
+description: "Control Unity Editor through the UNITY MCP plugin (Coplay): unity_list_tools shows what the open project exposes, unity_call runs one. Zero setup: open a Unity Hub project. Use for Unity, GameObjects, prefabs or Unity MCP work."
 license: MIT
 metadata:
   label: UNITY MCP

@@ -1,10 +1,10 @@
 {
   "id": "unity-mcp",
   "kind": "plugin",
-  "version": "1.2.7",
+  "version": "1.2.8",
   "label": "UNITY MCP",
   "description": "Control Unity Editor from Ducky. Runs the Coplay MCP server locally and installs MCP for Unity into open Hub projects \u2014 no Package Manager or URL setup.",
-  "min_app_version": "1.0.0",
+  "min_app_version": "1.2.357",
   "default_enabled": true,
   "secret_keys": [],
   "contributes": {
