@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_DIR = ROOT / "deploy"
 
 
-def _prune_superseded_zips(keep: pathlib.Path | None = None) -> None:
+def _prune_superseded_zips(keep: pathlib.Path | None = None, pattern: str = "*.ducky-plugin.zip") -> None:
     """Delete every built zip except the one just built.
 
     deploy/ is gitignored build output; superseded zips are stale files that
@@ -27,7 +27,7 @@ def _prune_superseded_zips(keep: pathlib.Path | None = None) -> None:
     script. Keeping them only invites installing an old build by mistake.
     """
     try:
-        zips = sorted(OUT_DIR.glob("*.ducky-plugin.zip"))
+        zips = sorted(OUT_DIR.glob(pattern))
     except OSError:
         return
     survivor = keep
@@ -156,7 +156,8 @@ def build_compiled_zip(*, out: Path | None = None, release: bool = False, target
     if not pid:
         raise SystemExit("plugin.json missing id")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    tag = f"-compiled-{target}" if target else "-compiled"
+    # The release finds a platform build as deploy/*-<target>-compiled.ducky-plugin.zip.
+    tag = f"-{target}-compiled" if target else "-compiled"
     dest = out or (OUT_DIR / f"{pid}-{version}{tag}.ducky-plugin.zip")
     repo = _find_ducky_repo()
     ducky_app = repo / "ducky_app"
@@ -173,7 +174,10 @@ def build_compiled_zip(*, out: Path | None = None, release: bool = False, target
     if target:
         check_target(dest, target)
     print(f"wrote {dest} ({dest.stat().st_size} bytes)")
-    _prune_superseded_zips(dest)
+    if target:  # keep the other platforms' builds for the same release
+        _prune_superseded_zips(dest, f"*-{target}-compiled.ducky-plugin.zip")
+    else:
+        _prune_superseded_zips(dest)
     return dest
 
 

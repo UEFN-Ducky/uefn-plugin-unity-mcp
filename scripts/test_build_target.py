@@ -1,4 +1,4 @@
-"""--target in build_zip.py: host detection, the python_abi check, and no cross-compiles."""
+"""--target in build_zip.py: host detection, the python_abi check, no cross-compiles, release names."""
 
 import json
 import sys
@@ -29,3 +29,20 @@ def test_other_platform_is_refused():
     other = next(t for t in sorted(bz.TARGET_ABI) if t != bz.host_target())
     with pytest.raises(SystemExit, match="cross-compile"):
         bz.build_compiled_zip(target=other)
+
+
+def test_zip_names_match_the_release(monkeypatch, tmp_path):
+    """release_platforms finds deploy/*-<target>-compiled.ducky-plugin.zip; Windows keeps -compiled."""
+    monkeypatch.setattr(bz, "OUT_DIR", tmp_path)
+    monkeypatch.setattr(bz, "_find_ducky_repo", lambda: tmp_path)
+    monkeypatch.setattr(bz, "check_target", lambda dest, target: None)
+    monkeypatch.setattr(bz, "host_target", lambda: "linux-x86_64")
+    monkeypatch.setattr(bz.subprocess, "run", lambda cmd, **kw: Path(cmd[-1]).write_bytes(b"zip"))
+    manifest = json.loads((bz.ROOT / "plugin.json").read_text(encoding="utf-8"))
+    stem = f"{str(manifest['id']).strip()}-{manifest.get('version') or 1}"
+
+    win = bz.build_compiled_zip()
+    assert win.name == f"{stem}-compiled.ducky-plugin.zip"
+    linux = bz.build_compiled_zip(target="linux-x86_64")
+    assert linux.name == f"{stem}-linux-x86_64-compiled.ducky-plugin.zip"
+    assert win.exists()  # a platform build prunes only its own platform's zips
