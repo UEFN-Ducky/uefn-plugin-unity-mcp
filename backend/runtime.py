@@ -114,7 +114,9 @@ def _sha256(data: bytes) -> str:
 def _find_uv() -> Path | None:
     key = _platform_key()
     if not key:
-        return None
+        # ponytail: no pinned uv for this CPU (Linux arm64): use an installed uv; pin its sha when needed.
+        which = shutil.which("uv")
+        return Path(which) if which else None
     meta = UV_ARTIFACTS[key]
     candidate = bin_dir() / meta["exe"]
     if candidate.is_file():
