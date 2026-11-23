@@ -113,24 +113,51 @@ def _find_ducky_repo() -> Path:
     )
 
 
+# Nuitka can't cross-compile, so a --target build runs on that OS and CPU.
+TARGET_ABI = {"windows-x86_64": "win_amd64", "linux-x86_64": "x86_64-linux-gnu", "linux-arm64": "aarch64-linux-gnu"}
+
+
+def host_target() -> str:
+    import platform
+
+    if not sys.platform.startswith("linux"):
+        return "windows-x86_64"
+    return "linux-arm64" if platform.machine().lower() in ("aarch64", "arm64") else "linux-x86_64"
+
+
+def check_target(dest: Path, target: str) -> None:
+    """The engine writes ``python_abi`` into the zip's plugin.json; it must name ``target``."""
+    with zipfile.ZipFile(dest) as zf:
+        abi = str(json.loads(zf.read("plugin.json")).get("python_abi") or "")
+    if not abi.endswith(TARGET_ABI[target]):
+        raise SystemExit(f"{dest.name}: python_abi {abi!r} is not a {target} build")
+
+
 def _ducky_python(repo: Path) -> str:
     venv = repo / ".venv" / "Scripts" / "python.exe"
+    if sys.platform.startswith("linux"):
+        venv = repo / ".venv" / "bin" / "python"
     return str(venv) if venv.is_file() else sys.executable
 
 
-def build_compiled_zip(*, out: Path | None = None, release: bool = False) -> Path:
+def build_compiled_zip(*, out: Path | None = None, release: bool = False, target: str | None = None) -> Path:
     """Build a compiled Store zip by invoking the Ducky build engine CLI.
 
     ``release`` bakes the Store license check in (with the Store's signing key), so a
-    Store upload is never unlicensed.
+    Store upload is never unlicensed. ``target`` (e.g. ``linux-x86_64``) names the zip for
+    that platform and checks the build's ``python_abi``; it must be this machine's target.
     """
+    if target and target != host_target():
+        raise SystemExit(f"--target {target} must build on a {target} machine (Nuitka can't cross-compile); "
+                         f"this one is {host_target()}")
     manifest = json.loads((ROOT / "plugin.json").read_text(encoding="utf-8"))
     pid = str(manifest.get("id") or "").strip()
     version = manifest.get("version") or 1
     if not pid:
         raise SystemExit("plugin.json missing id")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
-    dest = out or (OUT_DIR / f"{pid}-{version}-compiled.ducky-plugin.zip")
+    tag = f"-compiled-{target}" if target else "-compiled"
+    dest = out or (OUT_DIR / f"{pid}-{version}{tag}.ducky-plugin.zip")
     repo = _find_ducky_repo()
     ducky_app = repo / "ducky_app"
     env = dict(os.environ)
@@ -143,6 +170,8 @@ def build_compiled_zip(*, out: Path | None = None, release: bool = False) -> Pat
         cmd.append("--release")
     print(f"compiling via {repo}")
     subprocess.run(cmd, cwd=str(ducky_app), env=env, check=True)
+    if target:
+        check_target(dest, target)
     print(f"wrote {dest} ({dest.stat().st_size} bytes)")
     _prune_superseded_zips(dest)
     return dest
@@ -157,8 +186,13 @@ if __name__ == "__main__":
         action="store_true",
         help="compile the backend to a .pyd via the Ducky build engine (no Python source ships)",
     )
+    ap.add_argument(
+        "--target",
+        choices=sorted(TARGET_ABI),
+        help="compiled build for this OS/CPU (implies --compiled); must be this machine's",
+    )
     args = ap.parse_args()
-    if args.compiled:
-        build_compiled_zip()
+    if args.compiled or args.target:
+        build_compiled_zip(target=args.target)
     else:
         _prune_superseded_zips(build_zip())
