@@ -114,15 +114,19 @@ def _find_ducky_repo() -> Path:
 
 
 # Nuitka can't cross-compile, so a --target build runs on that OS and CPU.
-TARGET_ABI = {"windows-x86_64": "win_amd64", "linux-x86_64": "x86_64-linux-gnu", "linux-arm64": "aarch64-linux-gnu"}
+TARGET_ABI = {"windows-x86_64": "win_amd64", "linux-x86_64": "x86_64-linux-gnu", "linux-arm64": "aarch64-linux-gnu",
+              "macos-arm64": "darwin-arm64", "macos-x64": "darwin-x86_64"}
 
 
 def host_target() -> str:
     import platform
 
+    arm = platform.machine().lower() in ("aarch64", "arm64")
+    if sys.platform == "darwin":
+        return "macos-arm64" if arm else "macos-x64"
     if not sys.platform.startswith("linux"):
         return "windows-x86_64"
-    return "linux-arm64" if platform.machine().lower() in ("aarch64", "arm64") else "linux-x86_64"
+    return "linux-arm64" if arm else "linux-x86_64"
 
 
 def check_target(dest: Path, target: str) -> None:
@@ -135,7 +139,7 @@ def check_target(dest: Path, target: str) -> None:
 
 def _ducky_python(repo: Path) -> str:
     venv = repo / ".venv" / "Scripts" / "python.exe"
-    if sys.platform.startswith("linux"):
+    if sys.platform != "win32":
         venv = repo / ".venv" / "bin" / "python"
     return str(venv) if venv.is_file() else sys.executable
 

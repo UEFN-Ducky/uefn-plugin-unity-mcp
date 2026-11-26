@@ -11,6 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import build_zip as bz  # noqa: E402
 
 
+@pytest.mark.parametrize("machine,want", [("arm64", "macos-arm64"), ("x86_64", "macos-x64")])
+def test_mac_host_target(monkeypatch, machine, want):
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr("platform.machine", lambda: machine)
+    assert bz.host_target() == want
+    assert f"cpython-313-darwin-{machine}".endswith(bz.TARGET_ABI[want])
+
+
 def test_host_target_is_known():
     assert bz.host_target() in bz.TARGET_ABI
 
