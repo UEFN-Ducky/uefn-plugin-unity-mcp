@@ -6,6 +6,7 @@ import hashlib
 import io
 import logging
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -99,9 +100,9 @@ def _platform_key() -> str | None:
     if sys.platform == "win32":
         return "win_amd64"
     if sys.platform == "darwin":
-        return "darwin_arm64" if os.uname().machine == "arm64" else "darwin_x86_64"
+        return "darwin_arm64" if platform.machine() == "arm64" else "darwin_x86_64"
     if sys.platform.startswith("linux"):
-        machine = os.uname().machine
+        machine = platform.machine()
         if machine in ("x86_64", "amd64"):
             return "linux_x86_64"
     return None

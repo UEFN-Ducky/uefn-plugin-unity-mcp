@@ -20,6 +20,27 @@ def _fake_uv_zip(exe_name: str = "uv.exe") -> bytes:
     return buf.getvalue()
 
 
+def test_mac_picks_the_pinned_uv_per_chip(monkeypatch, tmp_path: Path) -> None:
+    """macOS: Apple Silicon and Intel each get their own pinned uv tarball (no .exe)."""
+    import sys
+
+    from backend import projects
+    from backend.constants import UV_ARTIFACTS
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    for machine, key, name in (("arm64", "darwin_arm64", "uv-aarch64-apple-darwin.tar.gz"),
+                               ("x86_64", "darwin_x86_64", "uv-x86_64-apple-darwin.tar.gz")):
+        monkeypatch.setattr(runtime.platform, "machine", lambda m=machine: m)
+        assert runtime._platform_key() == key
+        assert UV_ARTIFACTS[key]["filename"] == name and len(UV_ARTIFACTS[key]["sha256"]) == 64
+        assert not UV_ARTIFACTS[key]["exe"].endswith(".exe")
+    monkeypatch.setattr(projects.Path, "home", classmethod(lambda cls: tmp_path))
+    hub = tmp_path / "Library" / "Application Support" / "UnityHub" / "projects-v1.json"
+    hub.parent.mkdir(parents=True)
+    hub.write_text("{}", encoding="utf-8")
+    assert projects.hub_projects_path() == hub
+
+
 def test_probe_http_unreachable() -> None:
     with patch.object(runtime.urllib.request, "urlopen", side_effect=OSError("down")):
         result = runtime.probe_http("http://127.0.0.1:1/mcp")
